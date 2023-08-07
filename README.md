@@ -1,61 +1,127 @@
-# WebRTC stress test
-A tool for running concurrent WebRTC sessions using chromium web browser in headless mode.
+![logo](media/logo.svg "WebRTC Perf")
+# WebRTC Perf
+[GitHub page](https://github.com/vpalmisano/webrtcperf) | [Documentation](https://vpalmisano.github.io/webrtcperf)
 
-Components used:
-- NodeJS application.
-- Puppeteer library for controlling chromium instances.
-- A patched version of chromium (see `./chromium` directory): setting the 
-`USE_NULL_VIDEO_DECODER` environment variable disables the video decoding, 
-lowering the CPU requirements when running multiple browser sessions.
-- RTC stats logging with [ObserveRTC](https://github.com/ObserveRTC/observer-js).
+WebRTC performance and quality evaluation tool.
+It allows to validate the audio/video quality and the client CPU/memory usage
+when multiple connections join the same WebRTC service.
+
+Main features:
+- A NodeJS application/library using Puppeteer for controlling chromium instances.
+- It can be executed:
+  - using the pre built Docker image; this is the suggested way to run the tool
+    without installing any dependency;
+  - from sources (using git pull or npm install);
+  - using the pre built executables generated for each platform.
+- It allows to inject custom Javascript source files that will run into the
+browser page context for automating some tasks (e.g. pressing a button to join
+a conference room).
+- It allows to throttle the networking configuration, limiting the ingress/egress
+available bandwidth, the RTT or the packet loss %.
+- It uses a patched version of chromium (see `./chromium` directory) that allows
+to disable the video decoding, lowering the CPU requirements when running multiple
+browser sessions.
+- It contains an RTC stats logging module that allows to collect metrics and
+send them to a Prometheus Pushgateway server for live visualization with Grafana.
+- It allows to override getUserMedia and getDisplayMedia calls.
+- It allows to define alert rules and generate reports.
+
+## Install
+The tool can be executed from sources, using the pre built executables or using the Docker image.
+
+Using Npm:
+
+```bash
+echo '@vpalmisano:registry=https://npm.pkg.github.com' >> ~/.npmrc
+
+npm install -g @vpalmisano/webrtcperf
+
+# Install FFMpeg:
+sudo apt install ffmpeg # Linux
+# or:
+brew install ffmpeg # MacOS
+
+# Run a Jitsi test:
+webrtcperf \
+    --url="https://meet.jit.si/${JITSI_ROOM_URL}#config.prejoinPageEnabled=false" \
+    --display='' \
+    --show-page-log=false
+# Press <q> to stop.
+```
+
+Using Docker:
+
+```bash
+docker pull ghcr.io/vpalmisano/webrtcperf
+docker run -it --rm \
+    -v /dev/shm:/dev/shm \
+    ghcr.io/vpalmisano/webrtcperf \
+    --url="https://meet.jit.si/$JITSI_ROOM_URL#config.prejoinPageEnabled=false" \
+    --show-page-log=false \
+    --sessions=1 \
+    --tabs-per-session=1
+```
+
+Stop the tool pressing `q` (normal browser close) or `x` (it will close the
+process immediately).
 
 ## Configuration options
 
-See the [config documentation](CONFIG.md).
-
-The `DEBUG_LEVEL` environment is used for enabled debug messages; see [debug-level](https://github.com/commenthol/debug-level#readme) for syntax.
+See the [config documentation](https://vpalmisano.github.io/webrtcperf/types/Config.html).
 
 ## Statistics
 
 Example output:
 
 ```
--- Mon, 08 Mar 2021 11:41:48 GMT -------------------------------------------------------------------
-                          name    count      sum     mean   stddev      25p      min      max
-                           cpu        1    67.66    67.66     0.00    67.66    67.66    67.66 %
-                        memory        1   801.13   801.13     0.00   801.13   801.13   801.13 MB
-                          tabs        1        1        1        0        1        1        1
+-- Mon, 06 Feb 2023 20:46:34 GMT -------------------------------------------------------------------
+                          name    count      sum     mean   stddev       5p      95p      min      max
+                    System CPU        1             15.89     0.00    15.89    15.89    15.89    15.89 %
+                    System GPU        1              0.00     0.00     0.00     0.00     0.00     0.00 %
+                 System Memory        1             72.18     0.00    72.18    72.18    72.18    72.18 %
+                      CPU/page        1    84.42    84.42     0.00    84.42    84.42    84.42    84.42 %
+                   Memory/page        1  1206.90  1206.90     0.00  1206.90  1206.90  1206.90  1206.90 MB
+                         Pages        1        1        1        0        1        1        1        1
+                        Errors        1        0        0        0        0        0        0        0
+                      Warnings        1        0        0        0        0        0        0        0
+              Peer Connections        1        2        2        0        2        2        2        2
 -- Inbound audio -----------------------------------------------------------------------------------
-                      received        1     0.02     0.02     0.00     0.02     0.02     0.02 MB
-                          rate        1     0.53     0.53     0.00     0.53     0.53     0.53 Kbps
-                          lost        1              0.00     0.00     0.00     0.00     0.00 %
-                        jitter        1              0.00     0.00     0.00     0.00     0.00 s
-          avgJitterBufferDelay        1             85.27     0.00    85.27    85.27    85.27 ms
+                          rate        2    28.73    14.36    14.36     0.00    28.73     0.00    28.73 Kbps
+                          lost        1              0.00     0.00     0.00     0.00     0.00     0.00 %
+                        jitter        2              0.00     0.00     0.00     0.00     0.00     0.00 s
+          avgJitterBufferDelay        1             35.29     0.00    35.29    35.29    35.29    35.29 ms
 -- Inbound video -----------------------------------------------------------------------------------
-                      received        2    26.62    13.31    13.22    13.31     0.09    26.53 MB
-                          rate        2   838.72   419.36   411.30   419.36     8.06   830.66 Kbps
-                          lost        1              0.00     0.00     0.00     0.00     0.00 %
-                        jitter        1              1.88     0.37     1.77     0.98     2.65 s
-          avgJitterBufferDelay        1             90.86     0.00    90.86    90.86    90.86 ms
-                         width        1              1280        0     1280     1280     1280 px
-                        height        1               720        0      720      720      720 px
+                      received        2     2.66     1.33     1.32     0.01     2.64     0.01     2.64 MB
+                          rate        2   967.41   483.71   483.71     0.00   967.41     0.00   967.41 Kbps
+                          lost        1              0.00     0.00     0.00     0.00     0.00     0.00 %
+                        jitter        2              0.01     0.01     0.01     0.02     0.01     0.02 s
+          avgJitterBufferDelay        1             50.48     0.00    50.48    50.48    50.48    50.48 ms
+                         width        2               960      320      640     1280      640     1280 px
+                        height        2               540      180      360      720      360      720 px
+                           fps        1                15        0       15       15       15       15 fps
 -- Outbound audio ----------------------------------------------------------------------------------
-                          sent        1     0.50     0.50     0.00     0.50     0.50     0.50 MB
-                 retransmitted        1     0.00     0.00     0.00     0.00     0.00     0.00 MB
-                          rate        1     0.00     0.00     0.00     0.00     0.00     0.00 Kbps
+                          rate        2    42.84    21.42    21.42     0.00    42.84     0.00    42.84 Kbps
+                          lost        1              0.00     0.00     0.00     0.00     0.00     0.00 %
+                 roundTripTime        1             0.001    0.000    0.001    0.001    0.001    0.001 s
 -- Outbound video ----------------------------------------------------------------------------------
-                          sent        3    43.62    14.54     7.70    10.06     4.68    23.49 MB
-                 retransmitted        3     0.00     0.00     0.00     0.00     0.00     0.00 MB
-                          rate        3     0.00     0.00     0.00     0.00     0.00     0.00 Kbps
- qualityLimitResolutionChanges        3        0        0        0        0        0        0
-                         width        1              1280        0     1280     1280     1280 px
-                        height        1               720        0      720      720      720 px
-                           fps        1                25        0       25       25       25 fps
+                          sent        2     3.25     1.62     1.58     0.04     3.21     0.04     3.21 MB
+                          rate        2  1131.25   565.63   565.63     0.00  1131.25     0.00  1131.25 Kbps
+                          lost        1              0.00     0.00     0.00     0.00     0.00     0.00 %
+                 roundTripTime        1             0.001    0.000    0.001    0.001    0.001    0.001 s
+ qualityLimitResolutionChanges        2        2        1        1        0        2        0        2
+          qualityLimitationCpu        2        0        0        0        0        0        0        0 %
+    qualityLimitationBandwidth        2       20       10       10        0       20        0       20 %
+           sentActiveEncodings        2                 2        1        1        3        1        3 encodings
+                sentMaxBitrate        2  3700.00  1850.00   350.00  1500.00  2200.00  1500.00  2200.00 Kbps
+                         width        2               640      640        0     1280        0     1280 px
+                        height        2               360      360        0      720        0      720 px
+                           fps        2                12       12        0       25        0       25 fps
+              pliCountReceived        2                 1        0        1        2        1        2
 ```
 
 Statistics values:
 
-| Name                      | Count        | Desscription |
+| Name                      | Count        | Description |
 | :------------------------ | :----------- | :----------- |
 | cpu                       | Total sessions | The browser process cpu usage. |
 | memory                    | Total sessions | The browser process memory usage. |
@@ -82,42 +148,21 @@ See the [prometheus stack](prometheus-stack/README.md).
 Starts one send-receive participant:
 
 ```sh
-docker pull vpalmisano/webrtc-stress-test:latest
-docker run -it --rm --name=webrtc-stress-test-publisher \
+docker run -it --rm --name=webrtcperf-publisher \
     -v /dev/shm:/dev/shm \
-    -v /tmp/webrtc-stress-test:/tmp/webrtc-stress-test \
-    vpalmisano/webrtc-stress-test:latest \
-    --video-path=/app/video.mp4 \
+    ghcr.io/vpalmisano/webrtcperf \
     --url=$MEDIASOUP_DEMO_URL \
     --url-query='roomId=test&displayName=Publisher($s-$t)' \
     --sessions=1 \
     --tabs-per-session=1
 ```
 
-Using Vaapi GPU acceleration (experimental):
-
-```sh
-docker run -it --rm --name=webrtc-stress-test-publisher \
-    --privileged \
-    -v /dev/dri:/dev/dri \
-    -v /dev/shm:/dev/shm \
-    -v /tmp/webrtc-stress-test:/tmp/webrtc-stress-test \
-    vpalmisano/webrtc-stress-test:latest \
-    --video-path=/app/video.mp4 \
-    --url=$MEDIASOUP_DEMO_URL \
-    --url-query='roomId=test&displayName=Publisher($s-$t)' \
-    --sessions=1 \
-    --tabs-per-session=1 \
-    --enable-gpu=true
-```
-
 Starts 10 receive-only participants:
 
 ```sh
-docker pull vpalmisano/webrtc-stress-test:latest
-docker run -it --rm --name=webrtc-stress-test-viewer \
+docker run -it --rm --name=webrtcperf-viewer \
     -v /dev/shm:/dev/shm \
-    vpalmisano/webrtc-stress-test:latest \
+    ghcr.io/vpalmisano/webrtcperf \
     --url=$MEDIASOUP_DEMO_URL \
     --url-query='roomId=test&displayName=Viewer($s-$t)&produce=false' \
     --sessions=1 \
@@ -129,15 +174,13 @@ docker run -it --rm --name=webrtc-stress-test-viewer \
 Starts one send-receive participant, with a random audio activation pattern:
 
 ```sh
-docker pull vpalmisano/webrtc-stress-test:latest
-docker run -it --rm --name=webrtc-stress-test-publisher \
+docker run -it --rm \
     -v /dev/shm:/dev/shm \
-    -v /tmp/webrtc-stress-test:/tmp/webrtc-stress-test \
-    vpalmisano/webrtc-stress-test:latest \
-    --video-path=/app/video.mp4 \
+    -v $PWD/examples:/scripts:ro \
+    ghcr.io/vpalmisano/webrtcperf \
     --url=$EDUMEET_URL \
     --url-query='displayName=Publisher($s-$t)' \
-    --script-path=/app/scripts/edumeet-sendrecv.js \
+    --script-path=/scripts/edumeet-sendrecv.js \
     --sessions=1 \
     --tabs-per-session=1
 ```
@@ -145,13 +188,13 @@ docker run -it --rm --name=webrtc-stress-test-publisher \
 Starts 10 receive-only participants:
 
 ```sh
-docker pull vpalmisano/webrtc-stress-test:latest
-docker run -it --rm --name=webrtc-stress-test-viewer \
+docker run -it --rm \
     -v /dev/shm:/dev/shm \
-    vpalmisano/webrtc-stress-test:latest \
+    -v $PWD/examples:/scripts:ro \
+    ghcr.io/vpalmisano/webrtcperf \
     --url=$EDUMEET_URL \
     --url-query='displayName=Viewer($s-$t)' \
-    --script-path=/app/scripts/edumeet-recv.js \
+    --script-path=/scripts/edumeet-recv.js \
     --sessions=1 \
     --tabs-per-session=10
 ```
@@ -161,12 +204,9 @@ docker run -it --rm --name=webrtc-stress-test-viewer \
 Starts one send-receive participant:
 
 ```sh
-docker pull vpalmisano/webrtc-stress-test:latest
-docker run -it --rm --name=webrtc-stress-test-publisher \
+docker run -it --rm \
     -v /dev/shm:/dev/shm \
-    -v /tmp/webrtc-stress-test:/tmp/webrtc-stress-test \
-    vpalmisano/webrtc-stress-test:latest \
-    --video-path=/app/video.mp4 \
+    ghcr.io/vpalmisano/webrtcperf \
     --url=$JITSI_ROOM_URL \
     --url-query='#config.prejoinPageEnabled=false&userInfo.displayName=Participant($s-$t)' \
     --sessions=1 \
@@ -176,41 +216,26 @@ docker run -it --rm --name=webrtc-stress-test-publisher \
 Starts 10 receive-only participants:
 
 ```sh
-docker pull vpalmisano/webrtc-stress-test:latest
-docker run -it --rm --name=webrtc-stress-test-viewer \
+docker run -it --rm \
     -v /dev/shm:/dev/shm \
-    vpalmisano/webrtc-stress-test:latest \
+    ghcr.io/vpalmisano/webrtcperf \
     --url=$ROOM_URL \
     --url-query='#config.prejoinPageEnabled=false&userInfo.displayName=Participant($s-$t)' \
     --sessions=1 \
     --tabs-per-session=10
 ```
 
-### Jamm
-
-Starts one send-receive participant:
-
-```sh
-docker pull vpalmisano/webrtc-stress-test:latest
-docker run -it --rm --name=webrtc-stress-test-publisher \
-    -v /dev/shm:/dev/shm \
-    -v /tmp/webrtc-stress-test:/tmp/webrtc-stress-test \
-    vpalmisano/webrtc-stress-test:latest \
-    --video-path=/app/video.mp4 \
-    --script-path=/app/scripts/jamm-sendrecv.js \
-    --url=$ROOM_URL \
-    --sessions=1 \
-    --tabs-per-session=1
-```
-
 ## Running from source code
 
+The `DEBUG_LEVEL` environment variable can be used to enable debug messages;
+see [debug-level](https://github.com/commenthol/debug-level#readme) for syntax.
+
 ```sh
-git clone https://github.com/vpalmisano/webrtc-stress-test.git
+git clone https://github.com/vpalmisano/webrtcperf.git
 
-cd webrtc-stress-test
+cd webrtcperf
 
-# build the chromium customized version
+# Optional: build the chromium customized version
 # cd chromium
 # ./build.sh setup
 # ./build.sh apply_patch
@@ -219,23 +244,27 @@ cd webrtc-stress-test
 # dpkg -i ./chromium-browser-unstable_<version>-1_amd64.deb
 # cd ..
 
+yarn build
+
 # sendrecv test
-DEBUG_LEVEL=DEBUG:* yarn start:dev \
+DEBUG_LEVEL=DEBUG:* yarn start \
     --url=https://127.0.0.1:3443/test \
     --url-query='displayName=SendRecv($s/$S-$t/$T)' \
-    --video-path=./video.mp4 \
-    --script-path=./scripts/edumeet-sendrecv.js \
+    --script-path=./examples/edumeet-sendrecv.js \
     --sessions=1 \
-    --tabs-per-session=1 \
-    --enable-page-log=true
+    --tabs-per-session=1
 
 # recv only
-DEBUG_LEVEL=DEBUG:* yarn start:dev \
+DEBUG_LEVEL=DEBUG:* yarn start \
     --url=https://127.0.0.1:3443/test \
     --url-query='displayName=Recv($s/$S-$t/$T)' \
-    --script-path=./scripts/edumeet-recv.js \
+    --script-path=./examples/edumeet-recv.js \
     --sessions=1 \
-    --tabs-per-session=10 \
-    --enable-page-log=true \
-    --use-null-video-decoder=true
+    --tabs-per-session=10
 ```
+
+## Authors
+- Vittorio Palmisano [[github](https://github.com/vpalmisano)]
+
+## License
+[AGPL](./LICENSE)
